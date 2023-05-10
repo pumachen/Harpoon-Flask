@@ -1,11 +1,21 @@
-import hou
 import os
-import hwebserver
 import sys
+import signal
 import getopt
+import hou
+from flask import Flask, request
 from lib import logo
-from lib import serializer
 from lib import api
+
+app = Flask(__name__)
+
+@app.route("/api/hdalibrary", methods=['GET'])
+def hdalibrary():
+    return api.hdalibrary(request)
+
+@app.route("/api/hdaprocessor/<hda_name>", methods=['GET', 'POST'])
+def hdaprocessor(hda_name):
+    api.hdaprocessor(hda_name, request)
 
 
 def print_help_info():
@@ -14,16 +24,15 @@ def print_help_info():
     print("-?,-h    : this help")
     print("-d       : run in debug mode")
     print("-p       : specify server port")
-    print("-s       : specify static files directory")
+    # print("-s       : specify static files directory")
 
 
-def setupEnv():
-    HARPOON_ROOT = os.path.dirname(os.path.abspath(sys.argv[0]))
-    print(HARPOON_ROOT)
-    hou.putenv("HARPOON_ROOT", HARPOON_ROOT)
+def on_exit(signal, frame):
+    print('Bye!')
+    sys.exit(0)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     port = 80
     debug = False
     opts, args = getopt.getopt(sys.argv[1:], "hdp:s:", ["port=", "help", "debug", "static"])
@@ -35,10 +44,5 @@ if __name__ == "__main__":
             debug = True
         elif opt in ("-p", "--port"):
             port = int(arg)
-        elif opt in ("-s", "--static"):
-            hwebserver.registerStaticFilesDirectory(
-                arg,
-                "/static")
-    max_upload_size = 1024*1024*1024*1024
-    setupEnv()
-    hwebserver.run(port, debug, max_in_memory_file_upload_size=max_upload_size, max_request_size=max_upload_size)
+    signal.signal(signal.SIGINT, on_exit)
+    app.run(host = "0.0.0.0", port = port, debug = debug)
