@@ -15,7 +15,7 @@ def hdalibrary():
 
 @app.route("/api/hdaprocessor/<hda_name>", methods=['GET', 'POST'])
 def hdaprocessor(hda_name):
-    api.hdaprocessor(hda_name, request)
+    return api.hdaprocessor(hda_name, request)
 
 
 def print_help_info():

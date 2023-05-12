@@ -7,7 +7,7 @@ import time
 import shutil
 import hashlib
 import hou
-from flask import Flask, send_file
+from flask import Flask, send_file, jsonify
 from lib import serializer
 from lib import flaskext
 
@@ -34,8 +34,7 @@ def hdalibrary(request):
         if nodeType not in hdaLibrary:
             hdaLibrary[nodeType] = {}
         hdaLibrary[nodeType][hdaFile] = definition.description()
-    return json.dumps(hdaLibrary, indent=4)
-
+    return jsonify(hdaLibrary)
 
 
 def hdaprocessor(hda_name, request):
@@ -53,8 +52,7 @@ def hdaprocessor(hda_name, request):
 
 
 def hdaprocessor_get(hda, request):
-    jsonObj = hda.toJson()
-    return json.dumps(jsonObj, indent=4)
+    return jsonify(hda.toJson())
 
 
 def hdaprocessor_post(hda, request):
@@ -88,8 +86,6 @@ def hdaprocessor_post(hda, request):
     request.removeTempFiles()
 
     return send_file(responseData, mimetype="application/zip", attachment_filename="response.zip", as_attachment=True)
-
-
 
 
 def fillHDAParm(node: hou.Node, form, files):
