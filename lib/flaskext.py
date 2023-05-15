@@ -10,7 +10,7 @@ def createTempFiles(request: flask.Request):
     tempFiles = {}
     requestHash = getHash(request)
     tempDir = f"temp/uploads/{requestHash}"
-    os.mkdir(tempDir)
+    os.mkdirs(tempDir)
     for parm, file in request.files.items():
         filePath = os.path.abspath(f"{tempDir}/{file.filename}")
         file.save(filePath)
