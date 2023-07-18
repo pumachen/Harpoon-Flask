@@ -25,13 +25,15 @@ def removeTempFiles(request: flask.Request):
 
 
 def getHash(request: flask.Request):
-    timestamp = int(datetime.now().timestamp())
-    if request.date is not None:
-        timestamp = int(request.date.timestamp())
+    if getattr(request, 'timestamp', None) is None:
+        timestamp = datetime.now().timestamp()
+        if request.date is not None:
+            timestamp = request.date().timestamp()
+        setattr(request, "timestamp", timestamp)
+    timestamp = int(request.timestamp)
     client = str(request.remote_addr)
     path = request.path
-    requestHash = hashlib.sha256(f"{timestamp}_{client}_{path}".encode()).hexdigest()
-    return requestHash
+    return hashlib.sha256(f"{timestamp}_{client}_{path}".encode()).hexdigest()
 
 
 flask.Request.createTempFiles = createTempFiles
