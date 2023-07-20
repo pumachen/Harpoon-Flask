@@ -11,14 +11,12 @@ from flask import Flask, send_file, jsonify
 from lib import serializer
 from lib import flaskext
 
-
 def logRequestDebugInfo(request):
     # if .isInDebugMode():
     dt = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
     method = request.method
     path = request.path
     print("{} <\033[35m{}\033[0m> [\033[4;34m{}\033[0m]".format(dt, method.upper(), path))
-
 
 def hdalibrary(request):
     hdas = os.listdir("HDALibrary")
@@ -36,7 +34,6 @@ def hdalibrary(request):
         hdaLibrary[nodeType][hdaFile] = definition.description()
     return jsonify(hdaLibrary)
 
-
 def hdaprocessor(hda_name, request):
     hdaPath = os.path.abspath(os.path.join("HDALibrary", hda_name))
     hda = hou.hda.definitionsInFile(hdaPath)[0]
@@ -50,10 +47,8 @@ def hdaprocessor(hda_name, request):
     else:
         return hdaprocessor_get(hda, request)
 
-
 def hdaprocessor_get(hda, request):
     return jsonify(hda.toJson())
-
 
 def hdaprocessor_post(hda, request):
     HARPOON_ROOT = os.path.abspath(".")
@@ -87,6 +82,13 @@ def hdaprocessor_post(hda, request):
 
     return send_file(responseData, mimetype="application/zip", attachment_filename="response.zip", as_attachment=True)
 
+def hipprocessor(hip, request):
+    hipPath = os.path.abspath(os.path.join("HIPLibrary", hip))
+    hou.hipFile.load(hipPath, ignore_load_warnings=True)
+    top = hou.node("/tasks/ENTRY/output0")
+    top.dirtyWorkItems(False)
+    top.executeGraph(filter_static=False, block=True, generate_only=False, tops_only=False)
+    return "1"
 
 def fillHDAParm(node: hou.Node, form, files):
     for parm, value in form.items():

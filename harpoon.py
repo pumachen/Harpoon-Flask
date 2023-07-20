@@ -17,6 +17,10 @@ def hdalibrary():
 def hdaprocessor(hda_name):
     return api.hdaprocessor(hda_name, request)
 
+@app.route("/api/hipprocessor/<hip_name>", methods=['GET', 'POST'])
+def hipprocessor(hip_name):
+    return api.hipprocessor(hip_name, request)
+
 
 def print_help_info():
     print("Usage: hython harpoon.py [-p port (default:80)]")
