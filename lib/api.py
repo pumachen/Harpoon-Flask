@@ -5,7 +5,6 @@ import sys
 import json
 import time
 import shutil
-import hashlib
 import hou
 from flask import Flask, send_file, jsonify
 from lib import serializer
@@ -22,7 +21,8 @@ def hdalibrary(request):
     hdas = os.listdir("HDALibrary")
     hdaLibrary = {}
     for hdaFile in hdas:
-        if '.hda' not in hdaFile:
+        ext = os.path.splitext(hdaFile)[1]
+        if ext not in ['.hda', '.otl', '.hdalc', '.otllc']:
             continue
         hdaPath = os.path.join("HDALibrary", hdaFile)
         definition = hou.hda.definitionsInFile(hdaPath)[0]
@@ -85,9 +85,9 @@ def hdaprocessor_post(hda, request):
 def hipprocessor(hip, request):
     hipPath = os.path.abspath(os.path.join("HIPLibrary", hip))
     hou.hipFile.load(hipPath, ignore_load_warnings=True)
-    top = hou.node("/tasks/ENTRY/output0")
-    top.dirtyWorkItems(False)
-    top.executeGraph(filter_static=False, block=True, generate_only=False, tops_only=False)
+    top = hou.node("/tasks/ENTRY")
+    top.dirtyAllWorkItems(False)
+    top.cookWorkItems(block=True, tops_only=False)
     return "1"
 
 def fillHDAParm(node: hou.Node, form, files):
