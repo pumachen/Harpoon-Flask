@@ -7,6 +7,7 @@ import time
 import shutil
 import hou
 from flask import Flask, send_file, jsonify
+from xml.etree import ElementTree
 from lib import serializer
 from lib import flaskext
 
@@ -33,6 +34,7 @@ def hdalibrary(request):
             hdaLibrary[nodeType] = {}
         hdaLibrary[nodeType][hdaFile] = definition.description()
     return jsonify(hdaLibrary)
+
 
 def hdaprocessor(hda_name, request):
     hdaPath = os.path.abspath(os.path.join("HDALibrary", hda_name))
@@ -82,6 +84,16 @@ def hdaprocessor_post(hda, request):
 
     return send_file(responseData, mimetype="application/zip", attachment_filename="response.zip", as_attachment=True)
 
+def hiplibrary(request):
+    hips = os.listdir("HIPLibrary")
+    hipLibrary = []
+    for hipFile in hips:
+        ext = os.path.splitext(hipFile)[1]
+        if ext not in ['.hip', '.hiplc']:
+            continue
+        hipLibrary.append(hipFile)
+    return jsonify(hipLibrary)
+
 def hipprocessor(hip, request):
     hipPath = os.path.abspath(os.path.join("HIPLibrary", hip))
     hou.hipFile.load(hipPath, ignore_load_warnings=True)
@@ -89,6 +101,39 @@ def hipprocessor(hip, request):
     top.dirtyAllWorkItems(False)
     top.cookWorkItems(block=True, tops_only=False)
     return "1"
+
+def torlibrary(request):
+    tors = os.listdir("TORLibrary")
+    torLibrary = []
+    for torFile in tors:
+        ext = os.path.splitext(torFile)[1]
+        if ext not in ['.tor']:
+            continue
+        torLibrary.append(torFile)
+    return jsonify(torLibrary)
+
+
+def torprocessor(tor_name, request):
+    torPath = os.path.abspath(os.path.join("TORLibrary", tor_name))
+    if request.method == 'POST':
+        return torprocessor_post(torPath, request)
+    else:
+        return torprocessor_get(torPath, request)
+
+def torprocessor_get(tor, request):
+    tree = ElementTree.parse(os.path.splitext(tor)[0] + ".xml")
+    params = []
+    for param in tree.findall("Parameter"):
+        params.append({
+            "Name": param.get("Name"),
+            "Type": param.get("Type"),
+            "Default": param.get("Default")
+        })
+
+    return jsonify(params)
+
+def torprocessor_post(tor, request):
+    return jsonify(tor.toJson())
 
 def fillHDAParm(node: hou.Node, form, files):
     for parm, value in form.items():
