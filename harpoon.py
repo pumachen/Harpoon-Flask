@@ -8,6 +8,7 @@ from lib import logo
 from lib import api
 
 app = Flask(__name__)
+app.config['JSON_SORT_KEYS'] = False
 
 @app.route("/api/hdalibrary", methods=['GET'])
 def hdalibrary():
@@ -29,7 +30,7 @@ def hipprocessor(hip_name):
 def torlibrary():
     return api.torlibrary(request)
 
-@app.route("/api/torprocessor/<tor_name>", methods=['GET'])
+@app.route("/api/torprocessor/<tor_name>", methods=['GET', 'POST'])
 def torprocessor(tor_name):
     return api.torprocessor(tor_name, request)
 

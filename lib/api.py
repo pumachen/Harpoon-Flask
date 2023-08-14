@@ -8,8 +8,10 @@ import shutil
 import hou
 from flask import Flask, send_file, jsonify
 from xml.etree import ElementTree
-from lib import serializer
+from lib.serializer import *
 from lib import flaskext
+
+GAEA_CLI = "gaea.build.exe"
 
 def logRequestDebugInfo(request):
     # if .isInDebugMode():
@@ -50,7 +52,7 @@ def hdaprocessor(hda_name, request):
         return hdaprocessor_get(hda, request)
 
 def hdaprocessor_get(hda, request):
-    return jsonify(hda.toJson())
+    return jsonify(HDADefinition(hda).serialize())
 
 def hdaprocessor_post(hda, request):
     HARPOON_ROOT = os.path.abspath(".")
@@ -84,6 +86,17 @@ def hdaprocessor_post(hda, request):
 
     return send_file(responseData, mimetype="application/zip", attachment_filename="response.zip", as_attachment=True)
 
+
+def fillHDAParm(node: hou.Node, form, files):
+    for parm, value in form.items():
+        values = json.loads(value)
+        if not isinstance(values, str):
+            values = tuple(values) if (len(values) > 1) else values[0]
+        node.setParms({parm: values})
+    for parm, file in files.items():
+        node.parm(parm).set(file)
+
+
 def hiplibrary(request):
     hips = os.listdir("HIPLibrary")
     hipLibrary = []
@@ -114,32 +127,55 @@ def torlibrary(request):
 
 
 def torprocessor(tor_name, request):
-    torPath = os.path.abspath(os.path.join("TORLibrary", tor_name))
-    if request.method == 'POST':
-        return torprocessor_post(torPath, request)
+    if shutil.which(GAEA_CLI) is None:
+        return r"Gaea processor not available: Gaea-CLI not found"
+    tor_file = os.path.abspath(os.path.join("TORLibrary", tor_name))
+    nodemap = os.path.splitext(tor_file)[0] + ".xml"
+    if not os.path.exists(nodemap):
+        os.system(r"{0} {1} --nodemap".format(GAEA_CLI, tor_file))
+    templates = ParmTemplateGroup.FromTorNodeMap(ElementTree.parse(nodemap))
+    if request.method == 'GET':
+        return torprocessor_get(tor_file, templates, request)
     else:
-        return torprocessor_get(torPath, request)
+        return torprocessor_post(tor_file, templates, request)
 
-def torprocessor_get(tor, request):
-    tree = ElementTree.parse(os.path.splitext(tor)[0] + ".xml")
-    params = []
-    for param in tree.findall("Parameter"):
-        params.append({
-            "Name": param.get("Name"),
-            "Type": param.get("Type"),
-            "Default": param.get("Default")
-        })
+def torprocessor_get(tor: str, templates : ParmTemplateGroup, request):
+    return jsonify(templates.serialize())
 
-    return jsonify(params)
-
-def torprocessor_post(tor, request):
-    return jsonify(tor.toJson())
-
-def fillHDAParm(node: hou.Node, form, files):
-    for parm, value in form.items():
+def torprocessor_post(tor, templates: ParmTemplateGroup, request):
+    #os.system(r"{0} {1} --nodemap".format(GAEA_CLI, tor))
+    upload_files = request.createTempFiles()
+    cmd = "{0} {1} --open".format(GAEA_CLI, tor)
+    variables = ""
+    TEMP_DIR = os.path.abspath("./temp")
+    for template in templates.parmTemplates:
+        if template.isHidden:
+            variables += " {0}:{1}\{2}.exr".format(template.name, TEMP_DIR, template.name)
+    for parm, value in request.form.items():
         values = json.loads(value)
         if not isinstance(values, str):
             values = tuple(values) if (len(values) > 1) else values[0]
-        node.setParms({parm: values})
-    for parm, file in files.items():
-        node.parm(parm).set(file)
+        elif len(values) == 0:
+            continue
+        variables += " {0}:{1}".format(parm, values)
+
+    for parm, file in upload_files.items():
+        variables += " {0}:{1}".format(parm, file)
+
+    cmd += variables
+    os.system(cmd)
+
+    #responseFile = os.path.join(HARPOON_ROOT, r"temp/response.zip")
+    #shutil.copy(topOutputFile, responseFile)
+
+    #responseData = io.BytesIO()
+    #with open(responseFile, 'rb') as fo:
+    #    responseData.write(fo.read())
+    #responseData.seek(0)
+
+    #os.remove(responseFile)
+
+    #request.removeTempFiles()
+
+    #return send_file(responseData, mimetype="application/zip", attachment_filename="response.zip", as_attachment=True)
+    return variables

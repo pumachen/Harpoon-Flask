@@ -1,165 +1,410 @@
+from __future__ import annotations
 from typing import Dict, Any
 import hou
 import json
+from xml.etree import ElementTree
+from enum import Enum
 
+class StringParmType(Enum):
+    Regular = "Regular"
+    FileReference = "FileReference"
+
+class ParmDataType(Enum):
+    Int = "Int"
+    Float = "Float"
+    String = "String"
+    Ramp = "Ramp"
+
+class ParmTemplateType(Enum):
+    Int = "Int"
+    Float = "Float"
+    String = "String"
+    Toggle = "Toggle"
+    Menu = "Menu"
+    Button = "Button"
+    FolderSet = "FolderSet"
+    Folder = "Folder"
+    Separator = "Separator"
+    Label = "Label"
+    Ramp = "Ramp"
+
+class ParmTemplate:
+    name: str
+    label: str
+    type: str
+    dataType: str
+    numComponents: int
+    look = ""
+    help = ""
+    isHidden = False
+    isLabelHidden = False
+    joinsWithNext = False
+
+    def serialize(self) -> dict:
+        return {
+            "name": self.name,
+            "label": self.label,
+            "type": self.type,
+            "dataType": self.dataType,
+            "numComponents": self.numComponents,
+            "look": self.look,
+            "help": self.help,
+            "isHidden": self.isHidden,
+            "isLabelHidden": self.isLabelHidden,
+            "joinsWithNext": self.joinsWithNext
+        }
+
+    @classmethod
+    def _FromHouParmTemplate(cls, houParmTemplate: hou.ParmTemplate) -> ParmTemplate:
+        parmTemplate = cls()
+        parmTemplate.name = houParmTemplate.name()
+        parmTemplate.label = houParmTemplate.label()
+        parmTemplate.type = str(houParmTemplate.type()).split(".")[1]
+        parmTemplate.dataType = ParmDataType(str(houParmTemplate.dataType()).split(".")[1]).value
+        parmTemplate.numComponents = houParmTemplate.numComponents()
+        #parmTemplate.namingScheme = str(parmTemplate.namingScheme())
+        parmTemplate.look = str(houParmTemplate.look()).split(".")[1]
+        parmTemplate.help = houParmTemplate.help()
+        parmTemplate.isHidden = houParmTemplate.isHidden()
+        parmTemplate.isLabelHidden = houParmTemplate.isLabelHidden()
+        parmTemplate.joinsWithNext = houParmTemplate.joinsWithNext()
+        #parmTemplate.disableWhen = str(parmTemplate.disableWhen())
+        #parmTemplate.conditionals = parmTemplate.conditionals()
+        return parmTemplate
+
+    torTypeToParmType = {
+        "int": "Int",
+        "choice": "Int",
+        "double": "Float",
+        "bool": "Toggle",
+        "in": "String",
+        "out": "String"
+    }
+    torTypeToParmDataType = {
+        "int": "Int",
+        "choice": "Int",
+        "double": "Float",
+        "bool": "Toggle",
+        "in": "String",
+        "out": "String"
+    }
+
+    @classmethod
+    def _FromTorParmTemplate(cls, torParmTemplate: ElementTree.Element) -> ParmTemplate:
+        parmTemplate = cls()
+        parmTemplate.name = torParmTemplate.get("Variable")
+        parmTemplate.label = "{0}:{1}".format(torParmTemplate.get("Owner"), torParmTemplate.get("Name"))
+        torType = torParmTemplate.get("Type")
+        parmTemplate.type = parmTemplate.torTypeToParmType[torType]
+        parmTemplate.dataType = parmTemplate.torTypeToParmDataType[torType]
+        parmTemplate.numComponents = 1
+        parmTemplate.look = "Regular"
+        return parmTemplate
+
+class IntParmTemplate(ParmTemplate):
+    defaultValue: []
+    minValue: int
+    maxValue: int
+    minIsStrict = False
+    maxIsStrict = False
+    menuItems = []
+    menuLabels = []
+
+    def serialize(self) -> dict:
+        table = ParmTemplate.serialize(self)
+        table["defaultValue"] = self.defaultValue
+        table["minValue"] = self.minValue
+        table["maxValue"] = self.maxValue
+        table["minIsStrict"] = self.minIsStrict
+        table["maxIsStrict"] = self.maxIsStrict
+        table["menuItems"] = self.menuItems
+        table["menuLabels"] = self.menuLabels
+        return table
+
+    @classmethod
+    def FromHouIntParmTemplate(cls, houIntParmTemplate: hou.IntParmTemplate) -> IntParmTemplate:
+        intParmTemplate: IntParmTemplate = IntParmTemplate._FromHouParmTemplate(houIntParmTemplate)
+        intParmTemplate.defaultValue = houIntParmTemplate.defaultValue()
+        intParmTemplate.minValue = houIntParmTemplate.minValue()
+        intParmTemplate.maxValue = houIntParmTemplate.maxValue()
+        intParmTemplate.minIsStrict = houIntParmTemplate.minIsStrict()
+        intParmTemplate.maxIsStrict = houIntParmTemplate.maxIsStrict()
+        intParmTemplate.menuItems = houIntParmTemplate.menuItems()
+        intParmTemplate.menuLabels = houIntParmTemplate.menuLabels()
+        return intParmTemplate
+
+    @classmethod
+    def FromTorIntParmTemplate(cls, torIntParmTemplate: ElementTree.Element) -> IntParmTemplate:
+        intParmTemplate: IntParmTemplate = IntParmTemplate._FromTorParmTemplate(torIntParmTemplate)
+        intParmTemplate.defaultValue = [ torIntParmTemplate.get("Default") ]
+        intParmTemplate.minValue = torIntParmTemplate.get("Min")
+        intParmTemplate.maxValue = torIntParmTemplate.get("Max")
+        intParmTemplate.minIsStrict = True
+        intParmTemplate.maxIsStrict = True
+        if torIntParmTemplate.get("Type") == "choice":
+            intParmTemplate.menuLabels = torIntParmTemplate.get("Choices").split(",")
+            intParmTemplate.menuItems = [ *range(0, len(intParmTemplate.menuLabels)) ]
+        return intParmTemplate
+
+class FloatParmTemplate(ParmTemplate):
+    defaultValue: []
+    minValue: float
+    maxValue: float
+    minIsStrict = False
+    maxIsStrict = False
+
+    def serialize(self) -> dict:
+        table = ParmTemplate.serialize(self)
+        table["defaultValue"] = self.defaultValue
+        table["minValue"] = self.minValue
+        table["maxValue"] = self.maxValue
+        table["minIsStrict"] = self.minIsStrict
+        table["maxIsStrict"] = self.maxIsStrict
+        return table
+
+    @classmethod
+    def FromHouFloatParmTemplate(cls, houFloatParmTemplate: hou.FloatParmTemplate) -> FloatParmTemplate:
+        floatParmTemplate: FloatParmTemplate = FloatParmTemplate._FromHouParmTemplate(houFloatParmTemplate)
+        floatParmTemplate.defaultValue = houFloatParmTemplate.defaultValue()
+        floatParmTemplate.minValue = houFloatParmTemplate.minValue()
+        floatParmTemplate.maxValue = houFloatParmTemplate.maxValue()
+        floatParmTemplate.minIsStrict = houFloatParmTemplate.minIsStrict()
+        floatParmTemplate.maxIsStrict = houFloatParmTemplate.maxIsStrict()
+        return floatParmTemplate
+
+    @classmethod
+    def FromTorFloatParmTemplate(cls, torFloatParmTemplate: ElementTree.Element) -> FloatParmTemplate:
+        floatParmTemplate: FloatParmTemplate = FloatParmTemplate._FromTorParmTemplate(torFloatParmTemplate)
+        floatParmTemplate.defaultValue = [ torFloatParmTemplate.get("Default") ]
+        floatParmTemplate.minValue = torFloatParmTemplate.get("Min")
+        floatParmTemplate.maxValue = torFloatParmTemplate.get("Max")
+        floatParmTemplate.minIsStrict = True
+        floatParmTemplate.maxIsStrict = True
+        return floatParmTemplate
+
+class StringParmTemplate(ParmTemplate):
+    defaultValue: []
+    stringType: str
+    fileType = ""
+    menuItems = []
+    menuLabels = []
+
+    def serialize(self) -> dict:
+        table = ParmTemplate.serialize(self)
+        table["defaultValue"] = self.defaultValue
+        table["stringType"] = self.stringType
+        table["fileType"] = self.fileType
+        table["menuItems"] = self.menuItems
+        table["menuLabels"] = self.menuLabels
+        return table
+
+    @classmethod
+    def FromHouStringParmTemplate(cls, houStringParmTemplate: hou.StringParmTemplate) -> StringParmTemplate:
+        stringParmTemplate: StringParmTemplate = StringParmTemplate._FromHouParmTemplate(houStringParmTemplate)
+        stringParmTemplate.defaultValue = houStringParmTemplate.defaultValue()
+        stringParmTemplate.stringType = str(houStringParmTemplate.stringType()).split(".")[1]
+        stringParmTemplate.fileType = str(houStringParmTemplate.fileType()).split(".")[1]
+        stringParmTemplate.menuItems = houStringParmTemplate.menuItems()
+        stringParmTemplate.menuLabels = houStringParmTemplate.menuLabels()
+        return stringParmTemplate
+
+    @classmethod
+    def FromTorStringParmTemplate(cls, torStringParmTemplate: ElementTree.Element) -> StringParmTemplate:
+        stringParmTemplate: StringParmTemplate = StringParmTemplate._FromTorParmTemplate(torStringParmTemplate)
+        stringParmTemplate.defaultValue = [ torStringParmTemplate.get("Default") ]
+        stringParmTemplate.stringType = StringParmType.FileReference.value
+        stringParmTemplate.fileType = "Image"
+        if torStringParmTemplate.get("Type") == "out":
+            stringParmTemplate.isHidden = True
+        return stringParmTemplate
+
+class ToggleParmTemplate(ParmTemplate):
+    defaultValue: []
+
+    def serialize(self) -> dict:
+        table = ParmTemplate.serialize(self)
+        table["defaultValue"] = self.defaultValue
+        return table
+
+    @classmethod
+    def FromHouToggleParmTemplate(cls, houToggleParmTemplate: hou.ToggleParmTemplate) -> ToggleParmTemplate:
+        toggleParmTemplate: ToggleParmTemplate = ToggleParmTemplate._FromHouParmTemplate(houToggleParmTemplate)
+        toggleParmTemplate.defaultValue = houToggleParmTemplate.defaultValue()
+        return toggleParmTemplate
+
+    @classmethod
+    def FromTorToggleParmTemplate(cls, torToggleParmTemplate: ElementTree.Element) -> ToggleParmTemplate:
+        toggleParmTemplate: ToggleParmTemplate = ToggleParmTemplate._FromTorParmTemplate(torToggleParmTemplate)
+        toggleParmTemplate.defaultValue = [ torToggleParmTemplate.get("Default") ]
+        return toggleParmTemplate
+
+class MenuParmTemplate(ParmTemplate):
+    defaultValue: []
+    defaultValueAsString: bool
+    menuItems: []
+    menuLabels: []
+    menuType: str
+    isMenu: bool
+    isButtonStrip: bool
+    isIconStrip: bool
+
+    def serialize(self) -> dict:
+        table = ParmTemplate.serialize(self)
+        table["defaultValue"] = self.defaultValue
+        table["defaultValueAsString"] = self.defaultValueAsString
+        table["menuItems"] = self.menuItems
+        table["menuLabels"] = self.menuLabels
+        table["menuType"] = self.menuType
+        table["isMenu"] = self.isMenu
+        table["isButtonStrip"] = self.isButtonStrip
+        table["isIconStrip"] = self.isButtonStrip
+        return table
+
+    @classmethod
+    def FromHouMenuParmTemplate(cls, houMenuParmTemplate: hou.MenuParmTemplate) -> MenuParmTemplate:
+        menuParmTemplate: MenuParmTemplate = MenuParmTemplate._FromHouParmTemplate(houMenuParmTemplate)
+        menuParmTemplate.menuItems = houMenuParmTemplate.menuItems()
+        menuParmTemplate.menuLabels = houMenuParmTemplate.menuLabels()
+        menuParmTemplate.defaultValue = houMenuParmTemplate.defaultValue()
+        menuParmTemplate.defaultValueAsString = houMenuParmTemplate.defaultValueAsString()
+        menuParmTemplate.menuType = str(houMenuParmTemplate.menuType())
+        menuParmTemplate.isMenu = houMenuParmTemplate.isMenu()
+        menuParmTemplate.isButtonStrip = houMenuParmTemplate.isButtonStrip()
+        menuParmTemplate.isIconStrip = houMenuParmTemplate.isIconStrip()
+        return menuParmTemplate
+
+class ParmTemplateGroup:
+    name = ""
+    label = ""
+    parmTemplates = [ParmTemplate]
+
+    def serialize(self) -> dict:
+        parmTemplates = []
+        for parmTemplate in self.parmTemplates:
+            parmTemplates.append(parmTemplate.serialize())
+        return {
+            "name": self.name,
+            "label": self.label,
+            "parmTemplates": parmTemplates
+        }
+
+    @classmethod
+    def FromHouParmTemplateGroup(cls, houParmTemplateGroup: hou.ParmTemplateGroup) -> ParmTemplateGroup:
+        parmTemplates = []
+        for houParmTemplate in houParmTemplateGroup.entries():
+            type = houParmTemplate.type()
+            parmTemplate = None
+            if type == hou.parmTemplateType.Int:
+                parmTemplate = IntParmTemplate.FromHouIntParmTemplate(houParmTemplate)
+            elif type == hou.parmTemplateType.Float:
+                parmTemplate = FloatParmTemplate.FromHouFloatParmTemplate(houParmTemplate)
+            elif type == hou.parmTemplateType.String:
+                parmTemplate = StringParmTemplate.FromHouStringParmTemplate(houParmTemplate)
+            elif type == hou.parmTemplateType.Toggle:
+                parmTemplate = ToggleParmTemplate.FromHouToggleParmTemplate(houParmTemplate)
+            elif type == hou.parmTemplateType.Menu:
+                parmTemplate = MenuParmTemplate.FromHouMenuParmTemplate(houParmTemplate)
+            if parmTemplate is None:
+                print(type)
+            else:
+                parmTemplates.append(parmTemplate)
+        parmTemplateGroup = cls()
+        parmTemplateGroup.name = houParmTemplateGroup.name()
+        parmTemplateGroup.label = houParmTemplateGroup.label()
+        parmTemplateGroup.parmTemplates = parmTemplates
+        return parmTemplateGroup
+
+    @classmethod
+    def FromTorNodeMap(cls, torNodeMap: ElementTree) -> ParmTemplateGroup:
+        parmTemplateGroup = cls()
+        parmTemplates = []
+        for torParmTemplate in torNodeMap.findall("Parameter"):
+            type = torParmTemplate.get("Type")
+            parmTemplate = None
+            if type in ["int", "choice"]:
+                parmTemplate = IntParmTemplate.FromTorIntParmTemplate(torParmTemplate)
+            elif type == "double":
+                parmTemplate = FloatParmTemplate.FromTorFloatParmTemplate(torParmTemplate)
+            elif type in ["in", "out"]:
+                parmTemplate = StringParmTemplate.FromTorStringParmTemplate(torParmTemplate)
+            elif type == "bool":
+                parmTemplate = ToggleParmTemplate.FromTorToggleParmTemplate(torParmTemplate)
+            if parmTemplate is not None:
+                parmTemplates.append(parmTemplate)
+        parmTemplateGroup.parmTemplates = parmTemplates
+        return parmTemplateGroup
+
+class HDADefinition:
+    nodeType: str
+    nodeTypeCategory: str
+    nodeTypeName: str
+    libraryFilePath: str
+    isInstalled: bool
+    version: str
+    comment: str
+    description: str
+    icon: str
+    modificationTime: int
+    embeddedHelp: str
+    userInfo: str
+    extraInfo: str
+    minNumInputs: int
+    maxNumInputs: int
+    maxNumOutputs: int
+    parmTemplateGroup: ParmTemplateGroup
+
+    def serialize(self) -> dict:
+        return {
+            "nodeType": self.nodeType,
+            "nodeTypeCategory": self.nodeTypeCategory,
+            "nodeTypeName": self.nodeTypeName,
+            "libraryFilePath": self.libraryFilePath,
+            "isInstalled": self.isInstalled,
+            "version": self.version,
+            "comment": self.comment,
+            "description": self.description,
+            "icon": self.icon,
+            "modificationTime": self.modificationTime,
+            "embeddedHelp": self.embeddedHelp,
+            "userInfo": self.userInfo,
+            "extraInfo": self.extraInfo,
+            "minNumInputs": self.minNumInputs,
+            "maxNumInputs": self.maxNumInputs,
+            "maxNumOutputs": self.maxNumOutputs,
+            "parmTemplateGroup": self.parmTemplateGroup.serialize(),
+        }
+
+    def __init__(self, definition: hou.HDADefinition):
+        self.nodeType = nodeTypeToJson(definition.nodeType())
+        self.nodeTypeCategory = str(definition.nodeTypeCategory().name())
+        self.nodeTypeName = definition.nodeTypeName()
+        self.libraryFilePath = definition.libraryFilePath()
+        self.isInstalled = definition.isInstalled()
+        self.version = definition.version()
+        self.comment = definition.comment()
+        self.description = definition.description()
+        self.icon = definition.icon()
+        self.modificationTime = definition.modificationTime()
+        self.embeddedHelp = definition.embeddedHelp()
+        self.userInfo = definition.userInfo()
+        self.extraInfo = definition.extraInfo()
+        self.minNumInputs = definition.minNumInputs()
+        self.maxNumInputs = definition.maxNumInputs()
+        self.maxNumOutputs = definition.maxNumOutputs()
+        self.parmTemplateGroup = ParmTemplateGroup.FromHouParmTemplateGroup(definition.parmTemplateGroup())
 
 def nodeToJson(node: hou.Node):
-    jsonObj = {
+    return {
         'inputNames': node.inputNames(),
         'inputLabels': node.inputLabels(),
         'outputNames': node.outputNames(),
         'outputLabels': node.outputLabels(),
     }
-    return jsonObj
-
 
 def nodeTypeToJson(nodeType: hou.NodeType):
-    jsonObj = {
+    return {
         'name': nodeType.name(),
         'description': nodeType.description(),
         'sourcePath': nodeType.sourcePath(),
         'sourceNetwork': (nodeType.sourceNetwork())
     }
-    return jsonObj
-
-
-def HDADefinitionToJson(definition: hou.HDADefinition):
-    jsonObj = {
-        'nodeType': nodeTypeToJson(definition.nodeType()),
-        'nodeTypeCategory': str(definition.nodeTypeCategory().name()),
-        'nodeTypeName': definition.nodeTypeName(),
-        'libraryFilePath': definition.libraryFilePath(),
-        'isInstalled': definition.isInstalled(),
-        'version': definition.version(),
-        'comment': definition.comment(),
-        'description': definition.description(),
-        'icon': definition.icon(),
-        'modificationTime': definition.modificationTime(),
-        'embeddedHelp': definition.embeddedHelp(),
-        'userInfo': definition.userInfo(),
-        'extraInfo': definition.extraInfo(),
-        'minNumInputs': definition.minNumInputs(),
-        'maxNumInputs': definition.maxNumInputs(),
-        'maxNumOutputs': definition.maxNumOutputs(),
-        'parmTemplateGroup': definition.parmTemplateGroup().toJson()
-    }
-    return jsonObj
-
-
-def ParmTemplateGroupToJson(parmTemplateGroup: hou.ParmTemplateGroup):
-    parmTemplates = []
-    for parmTemplate in parmTemplateGroup.entries():
-        parmTemplates.append(parmTemplate.toJson())
-    jsonObj = {
-        'name': parmTemplateGroup.name(),
-        'label': parmTemplateGroup.label(),
-        'parmTemplates': parmTemplates
-    }
-    return jsonObj
-
-
-def ParmTemplateToJson(parmTemplate: hou.ParmTemplate):
-    jsonObj: dict[str, Any] = {}
-    jsonObj['name'] = parmTemplate.name()
-    jsonObj['label'] = parmTemplate.label()
-    jsonObj['type'] = str(parmTemplate.type()).split(".")[1]
-    jsonObj['dataType'] = str(parmTemplate.dataType()).split(".")[1]
-    jsonObj['numComponents'] = parmTemplate.numComponents()
-    # jsonObj['namingScheme'] = str(parmTemplate.namingScheme())
-    jsonObj['look'] = str(parmTemplate.look()).split(".")[1]
-    jsonObj['help'] = parmTemplate.help()
-    jsonObj['isHidden'] = parmTemplate.isHidden()
-    jsonObj['isLabelHidden'] = parmTemplate.isLabelHidden()
-    jsonObj['joinsWithNext'] = parmTemplate.joinsWithNext()
-    # jsonObj['disableWhen'] = str(parmTemplate.disableWhen())
-    # jsonObj['conditionals'] = parmTemplate.conditionals()
-    jsonObj['tags'] = parmTemplate.tags()
-    # jsonObj['scriptCallback'] = parmTemplate.scriptCallback()
-    # jsonObj['scriptCallbackLanguage'] = str(parmTemplate.scriptCallbackLanguage())
-    return jsonObj
-
-
-def IntParmTemplateToJson(intParmTemplate: hou.IntParmTemplate):
-    jsonObj = ParmTemplateToJson(intParmTemplate)
-    jsonObj['defaultValue'] = intParmTemplate.defaultValue()
-    # jsonObj['defaultExpression'] = intParmTemplate.defaultExpression()
-    # jsonObj['defaultExpressionLanguage'] = str(intParmTemplate.defaultExpressionLanguage())
-    jsonObj['minValue'] = intParmTemplate.minValue()
-    jsonObj['maxValue'] = intParmTemplate.maxValue()
-    jsonObj['minIsStrict'] = intParmTemplate.minIsStrict()
-    jsonObj['maxIsStrict'] = intParmTemplate.maxIsStrict()
-    jsonObj['menuItems'] = intParmTemplate.menuItems()
-    jsonObj['menuLabels'] = intParmTemplate.menuLabels()
-    jsonObj['iconNames'] = intParmTemplate.iconNames()
-    # jsonObj['itemGeneratorScript'] = intParmTemplate.itemGeneratorScript()
-    # jsonObj['itemGeneratorScriptLanguage'] = str(intParmTemplate.itemGeneratorScriptLanguage())
-    jsonObj['menuType'] = str(intParmTemplate.menuType()).split(".")[1]
-    jsonObj['menuUseToken'] = intParmTemplate.menuUseToken()
-    return jsonObj
-
-
-def FloatParmTemplateToJson(floatParmTemplate: hou.FloatParmTemplate):
-    jsonObj = ParmTemplateToJson(floatParmTemplate)
-    jsonObj['defaultValue'] = floatParmTemplate.defaultValue()
-    # jsonObj['defaultExpression'] = floatParmTemplate.defaultExpression()
-    # jsonObj['defaultExpressionLanguage'] = str(floatParmTemplate.defaultExpressionLanguage())
-    jsonObj['minValue'] = floatParmTemplate.minValue()
-    jsonObj['maxValue'] = floatParmTemplate.maxValue()
-    jsonObj['minIsStrict'] = floatParmTemplate.minIsStrict()
-    jsonObj['maxIsStrict'] = floatParmTemplate.maxIsStrict()
-    return jsonObj
-
-
-def StringParmTemplateToJson(stringParmTemplate: hou.StringParmTemplate):
-    jsonObj = ParmTemplateToJson(stringParmTemplate)
-    jsonObj['defaultValue'] = stringParmTemplate.defaultValue()
-    # jsonObj['defaultExpression'] = stringParmTemplate.defaultExpression()
-    # jsonObj['defaultExpressionLanguage'] = str(stringParmTemplate.defaultExpressionLanguage())
-    jsonObj['stringType'] = str(stringParmTemplate.stringType()).split(".")[1]
-    jsonObj['fileType'] = str(stringParmTemplate.fileType()).split(".")[1]
-    jsonObj['menuItems'] = stringParmTemplate.menuItems()
-    jsonObj['menuLabels'] = stringParmTemplate.menuLabels()
-    # jsonObj['iconNames'] = stringParmTemplate.iconNames()
-    # jsonObj['itemGeneratorScript'] = stringParmTemplate.itemGeneratorScript()
-    # jsonObj['itemGeneratorScriptLanguage'] = str(stringParmTemplate.itemGeneratorScriptLanguage())
-    jsonObj['menuType'] = str(stringParmTemplate.menuType()).split(".")[1]
-    return jsonObj
-
-
-def ToggleParmTemplateToJson(toggleParmTemplate: hou.ToggleParmTemplate):
-    jsonObj = ParmTemplateToJson(toggleParmTemplate)
-    jsonObj['defaultValue'] = toggleParmTemplate.defaultValue()
-    # jsonObj['defaultExpression'] = toggleParmTemplate.defaultExpression()
-    # jsonObj['defaultExpressionLanguage'] = str(toggleParmTemplate.defaultExpressionLanguage())
-    return jsonObj
-
-
-def MenuParmTemplateToJson(menuParmTemplate: hou.MenuParmTemplate):
-    jsonObj = ParmTemplateToJson(menuParmTemplate)
-    jsonObj['menuItems'] = menuParmTemplate.menuItems()
-    jsonObj['menuLabels'] = menuParmTemplate.menuLabels()
-    jsonObj['defaultValue'] = menuParmTemplate.defaultValue()
-    jsonObj['defaultValueAsString'] = menuParmTemplate.defaultValueAsString()
-    # jsonObj['defaultExpression'] = menuParmTemplate.defaultExpression()
-    # jsonObj['defaultExpressionLanguage'] = str(menuParmTemplate.defaultExpressionLanguage())
-    # jsonObj['iconNames'] = menuParmTemplate.iconNames()
-    # jsonObj['itemGeneratorScript'] = menuParmTemplate.itemGeneratorScript()
-    # jsonObj['itemGeneratorScriptLanguage'] = str(menuParmTemplate.itemGeneratorScriptLanguage())
-    jsonObj['menuType'] = str(menuParmTemplate.menuType())
-    jsonObj['enuUseToken'] = menuParmTemplate.menuUseToken()
-    jsonObj['isMenu'] = menuParmTemplate.isMenu()
-    jsonObj['isButtonStrip'] = menuParmTemplate.isButtonStrip()
-    jsonObj['isIconStrip'] = menuParmTemplate.isIconStrip()
-    return jsonObj
-
-
-hou.HDADefinition.toJson = HDADefinitionToJson
-hou.IntParmTemplate.toJson = IntParmTemplateToJson
-hou.FloatParmTemplate.toJson = FloatParmTemplateToJson
-hou.StringParmTemplate.toJson = StringParmTemplateToJson
-hou.ToggleParmTemplate.toJson = ToggleParmTemplateToJson
-hou.MenuParmTemplate.toJson = MenuParmTemplateToJson
-hou.ParmTemplate.toJson = ParmTemplateToJson
-hou.ParmTemplateGroup.toJson = ParmTemplateGroupToJson
-
-
