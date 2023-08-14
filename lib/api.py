@@ -5,7 +5,9 @@ import sys
 import json
 import time
 import shutil
+import hashlib
 import hou
+import zipfile
 from flask import Flask, send_file, jsonify
 from xml.etree import ElementTree
 from lib.serializer import *
@@ -125,32 +127,64 @@ def torlibrary(request):
         torLibrary.append(torFile)
     return jsonify(torLibrary)
 
+def get_file_md5(file):
+    m = hashlib.md5()
+    with open(file, 'rb') as fp:
+        while True:
+            data = fp.read(4096)
+            if not data:
+                break
+            m.update(data)
+    return m.hexdigest()
 
-def torprocessor(tor_name, request):
+def read_md5_file(file) -> str:
+    with open(file, "r") as fp:
+        md5 = fp.read(-1)
+    return md5
+
+def write_md5_file(file, md5):
+    with open(file, 'w') as fp:
+        fp.write(md5)
+
+
+def torprocessor(tor_file, request):
     if shutil.which(GAEA_CLI) is None:
         return r"Gaea processor not available: Gaea-CLI not found"
-    tor_file = os.path.abspath(os.path.join("TORLibrary", tor_name))
-    nodemap = os.path.splitext(tor_file)[0] + ".xml"
-    if not os.path.exists(nodemap):
+    tor_file = os.path.abspath(os.path.join("TORLibrary", tor_file))
+    nodemap_file = os.path.splitext(tor_file)[0] + ".xml"
+    md5_file = os.path.splitext(tor_file)[0] + ".md5"
+    nodemap_outdated = True
+    tor_md5 = get_file_md5(tor_file)
+    if os.path.exists(nodemap_file) and os.path.exists(md5_file):
+        nodemap_md5 = read_md5_file(md5_file)
+        if tor_md5 == nodemap_md5:
+            nodemap_outdated = False
+
+    if nodemap_outdated:
+        print("MD5 changed Updating Nodemap")
         os.system(r"{0} {1} --nodemap".format(GAEA_CLI, tor_file))
-    templates = ParmTemplateGroup.FromTorNodeMap(ElementTree.parse(nodemap))
+        write_md5_file(md5_file, tor_md5)
+    templates = ParmTemplateGroup.FromTorNodeMap(ElementTree.parse(nodemap_file))
     if request.method == 'GET':
         return torprocessor_get(tor_file, templates, request)
     else:
         return torprocessor_post(tor_file, templates, request)
 
-def torprocessor_get(tor: str, templates : ParmTemplateGroup, request):
+def torprocessor_get(tor_file: str, templates : ParmTemplateGroup, request):
     return jsonify(templates.serialize())
 
-def torprocessor_post(tor, templates: ParmTemplateGroup, request):
+def torprocessor_post(tor_file, templates: ParmTemplateGroup, request):
     #os.system(r"{0} {1} --nodemap".format(GAEA_CLI, tor))
     upload_files = request.createTempFiles()
-    cmd = "{0} {1} --open".format(GAEA_CLI, tor)
+    cmd = "{0} {1} ".format(GAEA_CLI, tor_file)
     variables = ""
-    TEMP_DIR = os.path.abspath("./temp")
+    temp_dir = os.path.abspath("./temp")
+    output_files = []
     for template in templates.parmTemplates:
         if template.isHidden:
-            variables += " {0}:{1}\{2}.exr".format(template.name, TEMP_DIR, template.name)
+            output_file = "{0}\{1}.exr".format(temp_dir, template.name)
+            variables += " {0}:{1}".format(template.name, output_file)
+            output_files.append(output_file)
     for parm, value in request.form.items():
         values = json.loads(value)
         if not isinstance(values, str):
@@ -165,17 +199,19 @@ def torprocessor_post(tor, templates: ParmTemplateGroup, request):
     cmd += variables
     os.system(cmd)
 
-    #responseFile = os.path.join(HARPOON_ROOT, r"temp/response.zip")
-    #shutil.copy(topOutputFile, responseFile)
+    response_file = os.path.abspath("./temp/response.zip")
+    zip_file = zipfile.ZipFile(response_file, "w")
+    for output_file in output_files:
+        zip_file.write(output_file, os.path.basename(output_file), compress_type = zipfile.ZIP_DEFLATED)
+        os.remove(output_file)
+    zip_file.close()
 
-    #responseData = io.BytesIO()
-    #with open(responseFile, 'rb') as fo:
-    #    responseData.write(fo.read())
-    #responseData.seek(0)
+    response_data = io.BytesIO()
+    with open(response_file, 'rb') as fo:
+        response_data.write(fo.read())
+    response_data.seek(0)
 
-    #os.remove(responseFile)
+    os.remove(response_file)
 
-    #request.removeTempFiles()
-
-    #return send_file(responseData, mimetype="application/zip", attachment_filename="response.zip", as_attachment=True)
-    return variables
+    request.removeTempFiles()
+    return send_file(response_data, mimetype="application/zip", attachment_filename="response.zip", as_attachment=True)

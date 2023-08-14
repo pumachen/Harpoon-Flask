@@ -30,9 +30,9 @@ def hipprocessor(hip_name):
 def torlibrary():
     return api.torlibrary(request)
 
-@app.route("/api/torprocessor/<tor_name>", methods=['GET', 'POST'])
-def torprocessor(tor_name):
-    return api.torprocessor(tor_name, request)
+@app.route("/api/torprocessor/<tor_file>", methods=['GET', 'POST'])
+def torprocessor(tor_file):
+    return api.torprocessor(tor_file, request)
 
 def print_help_info():
     print("Usage: hython harpoon.py [-p port (default:80)]")
